@@ -1,0 +1,4 @@
+org/apache/hadoop/examples/KMeans.class
+org/apache/hadoop/examples/KMeans$InitPointsMapper.class
+org/apache/hadoop/examples/KMeans$InitCentroidsMapper.class
+org/apache/hadoop/examples/KMeans$InitReducer.class
