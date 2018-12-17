@@ -254,59 +254,107 @@ public class KMeans {
   /*        <total cost,m> <sum of m_costs> */
   /* Output: <data point> <e%e_centroid> */
   /*         <data point> <m%m_centroid> */
-  /*
   public static class NewCentroidsMapper extends Mapper<Object, Text, Text, Text> {
     private Text keyText = new Text();
     private Text valueText = new Text();
 
     public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-      boolean first = true;
-      String pointStr = new String("");
-
-      // Read the input file, and get the data points
       StringTokenizer itr = new StringTokenizer(value.toString());
       while (itr.hasMoreTokens()) {
-        for (int i = 0; i < POINT_DIM; i++) {
-          String num = itr.nextToken();
-          if (!first) {
-            pointStr += ",";
-          }
-          pointStr += num;
-          first = false;
-        }
 
-        // Set the key-value pair for the data point
-        keyText.set("p");
-        valueText.set(pointStr);
-        context.write(keyText, valueText);
+        // Read the input file, and get the centroid and the list of data points
+        String centroidStr = itr.nextToken();
+        String dataPointStr = new String("");
+        if (itr.hasMoreTokens()) {
+          dataPointStr = itr.nextToken();
+        }
+        String typeStr = centroidStr.substring(0, 2);  // e% or m%
+
+        if (centroidStr.indexOf('%') != -1) {
+          String[] dataPointListStr = dataPointStr.split("/");
+          int numOfPoint = 0;
+          double[] newCentroid = new double[POINT_DIM];
+          for (int d = 0; d < POINT_DIM; d++) {
+            newCentroid[d] = 0.0;
+          }
+
+          // Sum up the value of each data points
+          for (int i = 0; i < POINT_COUNT; i++) {
+            if (dataPointListStr[i].indexOf('y') != -1) {
+              numOfPoint++;
+              String[] pointDim = dataPointListStr[i].substring(2).split(",");
+              for (int d = 0; d < POINT_DIM; d++) {
+                newCentroid[d] += Double.parseDouble(pointDim[d]);
+              }
+            }
+          }
+
+          // Get the average of the sum as the new centroid
+          String newCentroidStr = new String("");
+          for (int d = 0; d < POINT_DIM; d++) {
+            newCentroid[d] /= (double)numOfPoint;
+            if (d != 0) {
+              newCentroidStr += ",";
+            }
+            newCentroidStr += String.format("%.3f", newCentroid[d]);
+          }
+
+          // Set the key-value pairs
+          for (int i = 0; i < POINT_COUNT; i++) {
+            keyText.set(dataPointListStr[i].substring(2));
+            valueText.set(typeStr + newCentroidStr);
+            context.write(keyText, valueText);
+          }
+        }
       }
     }
   }
-  */
 
   /* Reducer for applying K-Means algorithm. Compute the new centroids */
   /* Input: <data point> <e%e_centroid> */
   /*        <data point> <m%m_centroid> */
   /* Output: <data point> <e%list of e_centroids> */
   /*         <data point> <m%list of m_centroids> */
-  /*
   public static class NewCentroidsReducer extends Reducer<Text, Text, Text, Text> {
-    private Text keyText = new Text();
     private Text valueText = new Text();
 
     public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+      String typeStr = new String("");
+      String e_centroidListStr = new String("e%");
+      String m_centroidListStr = new String("m%");
+      boolean e_first = true;
+      boolean m_first = true;
+
+      // Gather all the recomputed centroids
       for (Text val : values) {
-        // Set the key-value pair for clusters and data points
-        context.write(key, val);
+        String centroidStr = val.toString();
+
+        // Centroids for Euclidean distance
+        if (centroidStr.indexOf('e') != -1) {
+          if (!e_first) {
+            e_centroidListStr += "/";
+          }
+          e_centroidListStr += centroidStr.substring(2);
+          e_first = false;
+        }
+
+        // Centroids for Manhattan distance
+        else {
+          if (!m_first) {
+            m_centroidListStr += "/";
+          }
+          m_centroidListStr += centroidStr.substring(2);
+          m_first = false;
+        }
       }
 
-      // Set the key-value pair for the cost
-      keyText.set("cost");
-      valueText.set("");
-      context.write(keyText, valueText);
+      // Set the key-value pairs
+      valueText.set(e_centroidListStr);
+      context.write(key, valueText);
+      valueText.set(m_centroidListStr);
+      context.write(key, valueText);
     }
   }
-  */
 
   /* Mapper for calculating the distance between each pair of centroids */
   /* Input: <data point> <e%list of e_centroids> */
@@ -394,6 +442,7 @@ public class KMeans {
     for (int iter = 1; iter <= MAX_ITER; iter++) {
 
       // Assign each data points to one of the cluster
+      /*
       Job job2 = new Job(conf, "K-Means Assign");
       job2.setJarByClass(KMeans.class);
       job2.setMapperClass(AssignMapper.class);
@@ -403,9 +452,9 @@ public class KMeans {
       FileInputFormat.setInputPaths(job2, new Path(otherArgs[2] + "_" + String.valueOf(iter - 1)));
       FileOutputFormat.setOutputPath(job2, new Path(otherArgs[2] + "_" + String.valueOf(iter) + "_c"));
       job2.waitForCompletion(true);
+      */
 
       // Compute the new centroids
-      /*
       Job job3 = new Job(conf, "K-Means Recompute");
       job3.setJarByClass(KMeans.class);
       job3.setMapperClass(NewCentroidsMapper.class);
@@ -415,7 +464,6 @@ public class KMeans {
       FileInputFormat.setInputPaths(job3, new Path(otherArgs[2] + "_" + String.valueOf(iter) + "_c"));
       FileOutputFormat.setOutputPath(job3, new Path(otherArgs[2] + "_" + String.valueOf(iter)));
       job3.waitForCompletion(true);
-      */
     }
 
     // Calculate the distance between each pair of centroids
