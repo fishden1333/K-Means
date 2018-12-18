@@ -1,8 +1,10 @@
-org/apache/hadoop/examples/KMeans$InitPointsMapper.class
 org/apache/hadoop/examples/KMeans$NewCentroidsMapper.class
+org/apache/hadoop/examples/KMeans$InitPointsMapper.class
+org/apache/hadoop/examples/KMeans$PairDistanceReducer.class
 org/apache/hadoop/examples/KMeans$InitCentroidsMapper.class
 org/apache/hadoop/examples/KMeans$InitReducer.class
 org/apache/hadoop/examples/KMeans.class
+org/apache/hadoop/examples/KMeans$PairDistanceMapper.class
 org/apache/hadoop/examples/KMeans$NewCentroidsReducer.class
 org/apache/hadoop/examples/KMeans$AssignReducer.class
 org/apache/hadoop/examples/KMeans$AssignMapper.class

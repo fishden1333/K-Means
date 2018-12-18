@@ -18,8 +18,7 @@ import org.apache.hadoop.util.GenericOptionsParser;
 
 public class KMeans {
 
-  public static int MAX_ITER = 1;  // Maximum number of iterations
-  public static int POINT_COUNT = 4601;  // Number of data points
+  public static int MAX_ITER = 20;  // Maximum number of iterations
   public static int POINT_DIM = 58;  // Number of dimension for each data point
   public static int K_CLUSTERS = 10;  // Number of clusters (k)
 
@@ -241,7 +240,7 @@ public class KMeans {
           double cost = Double.parseDouble(val.toString());
           costSum += cost;
         }
-        valueText.set(String.valueOf(costSum));
+        valueText.set(String.format("%.3f", costSum));
         context.write(key, valueText);
       }
     }
@@ -279,7 +278,7 @@ public class KMeans {
           }
 
           // Sum up the value of each data points
-          for (int i = 0; i < POINT_COUNT; i++) {
+          for (int i = 0; i < dataPointListStr.length; i++) {
             if (dataPointListStr[i].indexOf('y') != -1) {
               numOfPoint++;
               String[] pointDim = dataPointListStr[i].substring(2).split(",");
@@ -300,7 +299,7 @@ public class KMeans {
           }
 
           // Set the key-value pairs
-          for (int i = 0; i < POINT_COUNT; i++) {
+          for (int i = 0; i < dataPointListStr.length; i++) {
             keyText.set(dataPointListStr[i].substring(2));
             valueText.set(typeStr + newCentroidStr);
             context.write(keyText, valueText);
@@ -359,61 +358,102 @@ public class KMeans {
   /* Mapper for calculating the distance between each pair of centroids */
   /* Input: <data point> <e%list of e_centroids> */
   /*        <data point> <m%list of m_centroids> */
-  /* Output: <e> <e_centroid> */
-  /*         <m> <m_centroid> */
-  /*
+  /* Output: <e> <e_distance> */
+  /*         <m> <m_distance> */
   public static class PairDistanceMapper extends Mapper<Object, Text, Text, Text> {
     private Text keyText = new Text();
     private Text valueText = new Text();
 
     public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-      boolean first = true;
-      String pointStr = new String("");
+      double[][] e_centroidList = new double[K_CLUSTERS][POINT_DIM];
+      double[][] m_centroidList = new double[K_CLUSTERS][POINT_DIM];
+      String ONE_DATA_POINT = "0,0.64,0.64,0,0.32,0,0,0,0,0,0,0.64,0,0,0,0.32,0,1.29,1.93,0,0.96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.778,0,0,3.756,61,278,1";
 
-      // Read the input file, and get the data points
       StringTokenizer itr = new StringTokenizer(value.toString());
-      while (itr.hasMoreTokens()) {
-        for (int i = 0; i < POINT_DIM; i++) {
-          String num = itr.nextToken();
-          if (!first) {
-            pointStr += ",";
-          }
-          pointStr += num;
-          first = false;
-        }
+      if (itr.hasMoreTokens()) {
+        String dataPointStr = itr.nextToken();
 
-        // Set the key-value pair for the data point
-        keyText.set("p");
-        valueText.set(pointStr);
-        context.write(keyText, valueText);
+        // Only need to read one key-value pair
+        if (dataPointStr.equals(ONE_DATA_POINT)) {
+          String centroidListStr = new String("");
+          if (itr.hasMoreTokens()) {
+            centroidListStr = itr.nextToken();
+          }
+          String typeStr = centroidListStr.substring(0, 1);  // e or m
+
+          // Store the centroids for Euclidean and Manhattan distances
+          String[] centroidStrList = centroidListStr.substring(2).split("/");
+          for (int c = 0; c < K_CLUSTERS; c++) {
+            String[] centroidDim = centroidStrList[c].split(",");
+            for (int d = 0; d < POINT_DIM; d++) {
+              if (typeStr.indexOf('e') != -1) {
+                e_centroidList[c][d] = Double.parseDouble(centroidDim[d]);
+              }
+              else {
+                m_centroidList[c][d] = Double.parseDouble(centroidDim[d]);
+              }
+            }
+          }
+
+          // Calculate the distance between each pair of clusters
+          for (int c1 = 0; c1 < K_CLUSTERS; c1++) {
+            for (int c2 = c1 + 1; c2 < K_CLUSTERS; c2++) {
+
+              // Use Euclidean distance
+              if (typeStr.indexOf('e') != -1) {
+                double e_distance = 0.0;
+                for (int d = 0; d < POINT_DIM; d++) {
+                  e_distance += (e_centroidList[c1][d] - e_centroidList[c2][d]) * (e_centroidList[c1][d] - e_centroidList[c2][d]);
+                }
+                e_distance = Math.sqrt(e_distance);
+                keyText.set("e");
+                valueText.set(String.format("%.3f", e_distance));
+                context.write(keyText, valueText);
+              }
+
+              // Use Manhattan distance
+              else {
+                double m_distance = 0.0;
+                for (int d = 0; d < POINT_DIM; d++) {
+                  m_distance += Math.abs(m_centroidList[c1][d] - m_centroidList[c2][d]);
+                }
+                keyText.set("m");
+                valueText.set(String.format("%.3f", m_distance));
+                context.write(keyText, valueText);
+              }
+            }
+          }
+        }
       }
     }
   }
-  */
 
   /* Reducer for calculating the distance between each pair of centroids */
-  /* Input: <e> <e_centroid> */
-  /*         <m> <m_centroid> */
-  /* Output: <e> <list of distances> */
-  /*         <m> <list of distances> */
-  /*
+  /* Input: <e> <e_distance> */
+  /*         <m> <m_distance> */
+  /* Output: <e> <list of e_distances> */
+  /*         <m> <list of m_distances> */
   public static class PairDistanceReducer extends Reducer<Text, Text, Text, Text> {
-    private Text keyText = new Text();
     private Text valueText = new Text();
 
     public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+      String distanceStr = new String("");
+      boolean first = true;
+
+      // Gather all the distances, and make them a list
       for (Text val : values) {
-        // Set the key-value pair for clusters and data points
-        context.write(key, val);
+        if (!first) {
+          distanceStr += ", ";
+        }
+        distanceStr += val.toString();
+        first = false;
       }
 
-      // Set the key-value pair for the cost
-      keyText.set("cost");
-      valueText.set("");
-      context.write(keyText, valueText);
+      // Set the key-value pair for the distances
+      valueText.set(distanceStr);
+      context.write(key, valueText);
     }
   }
-  */
 
   public static void main(String[] args) throws Exception {
     Configuration conf = new Configuration();
@@ -424,7 +464,6 @@ public class KMeans {
     }
 
     /* Initialize the cluster centroids and data points */
-    /*
     Job job1 = new Job(conf, "Initialize");
     job1.setJarByClass(KMeans.class);
     job1.setMapperClass(InitCentroidsMapper.class);
@@ -436,13 +475,11 @@ public class KMeans {
     MultipleInputs.addInputPath(job1, new Path(otherArgs[1]), TextInputFormat.class, InitPointsMapper.class);
     FileOutputFormat.setOutputPath(job1, new Path(otherArgs[2] + "_0"));
     job1.waitForCompletion(true);
-    */
 
     // Apply K-Means algorithm for MAX_ITER iterations
     for (int iter = 1; iter <= MAX_ITER; iter++) {
 
       // Assign each data points to one of the cluster
-      /*
       Job job2 = new Job(conf, "K-Means Assign");
       job2.setJarByClass(KMeans.class);
       job2.setMapperClass(AssignMapper.class);
@@ -452,7 +489,6 @@ public class KMeans {
       FileInputFormat.setInputPaths(job2, new Path(otherArgs[2] + "_" + String.valueOf(iter - 1)));
       FileOutputFormat.setOutputPath(job2, new Path(otherArgs[2] + "_" + String.valueOf(iter) + "_c"));
       job2.waitForCompletion(true);
-      */
 
       // Compute the new centroids
       Job job3 = new Job(conf, "K-Means Recompute");
@@ -467,7 +503,6 @@ public class KMeans {
     }
 
     // Calculate the distance between each pair of centroids
-    /*
     Job job4 = new Job(conf, "Pair Distance");
     job4.setJarByClass(KMeans.class);
     job4.setMapperClass(PairDistanceMapper.class);
@@ -477,7 +512,6 @@ public class KMeans {
     FileInputFormat.setInputPaths(job4, new Path(otherArgs[2] + "_" + String.valueOf(MAX_ITER)));
     FileOutputFormat.setOutputPath(job4, new Path(otherArgs[2]));
     job4.waitForCompletion(true);
-    */
 
     System.exit(0);
   }
